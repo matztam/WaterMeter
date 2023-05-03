@@ -113,6 +113,7 @@ const char HTML_INDEX[] PROGMEM =
   "<div class='zeile'>Zählerstand</div>\n"
   "<div class='zeile counter'>%.1f Liter</div>\n"
   "<div class='tank'><div class='water' style='height: %.1f%%;'><div>%.1f%%</div></div></div>\n"
+  "<div class='zeile'>%d Impulse</div>\n"
   "<div class='zeile'><a href='/config'>Config</a></div>\n"
   "</div>\n"
   "</body>\n"

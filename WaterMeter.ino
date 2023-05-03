@@ -177,9 +177,9 @@ void handleIndex(){
     tankPercent = 0;
   }
   
-  char _buf[1200];
+  char _buf[1300];
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-  sprintf(_buf,HTML_INDEX,/*_apName.c_str()*/apName.c_str(), apName.c_str(), meterValue, tankPercent, tankPercent);
+  sprintf(_buf,HTML_INDEX,/*_apName.c_str()*/apName.c_str(), apName.c_str(), meterValue, tankPercent, tankPercent, pulseCount);
   server.send(200, "text/html", _buf);
 }
 
