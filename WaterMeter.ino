@@ -1,4 +1,3 @@
-
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
@@ -22,7 +21,7 @@ WebConfig conf;
 
 float meterValue = 0.0f;
 float meterValueLastSaved = 0.0f;
-unsigned short pulseCount = 0;
+unsigned long pulseCount = 0;
 float divider = 1;
 
 bool otaUpdate = false;
