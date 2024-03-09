@@ -11,6 +11,8 @@
 bool buttonPressed = false;
 unsigned long buttonPressedTime = 0;
 
+unsigned long wifiConnectFailedTime = 0;
+
 TM1637TinyDisplay display(CLK, DIO);
 int bright = 1;
 
@@ -145,7 +147,9 @@ boolean initWiFi() {
           WiFi.mode(WIFI_AP);
           WiFi.softAP(conf.getApName(),"",1);  
           display.showString("AP mode IP 192.168. 4.1");
+          wifiConnectFailedTime = millis();
     }
+    
     return connected;
 }
 
@@ -221,7 +225,7 @@ void displayMeterValue(){
 void resetCounter(){
   display.showString("reset");
   display.clear();
-  conf.setValue("pulseCount", "0");
+  conf.setValue("pulseCount", String(0.0f));
   conf.writeConfig();
   
   pulseCount = 0; 
@@ -238,7 +242,7 @@ void factoryReset(){
 }
 
 void savePulseCount(){
-  conf.setValue("pulseCount", (String) pulseCount);
+  conf.setValue("pulseCount", String(pulseCount));
   conf.writeConfig();
   meterValueLastSaved = meterValue;
 }
@@ -253,22 +257,30 @@ void loop() {
   
   server.handleClient();
 
-    setMeterValue();
-    displayMeterValue();
+  setMeterValue();
+  displayMeterValue();
 
-    if(buttonPressed){
-      while(digitalRead(BUTTON) == LOW){
-        if(buttonPressedTime + 3000 < millis()){
-          buttonPressed = false;
-          resetCounter();
-          break;
-        }
-        delay(10);
+  if(buttonPressed){
+    while(digitalRead(BUTTON) == LOW){
+      if(buttonPressedTime + 3000 < millis()){
+        buttonPressed = false;
+        resetCounter();
+        break;
       }
-      buttonPressed = false;
     }
+    float test = conf.getFloat("pulseCount");
+    display.showString((String((long) test) + " pulses").c_str());
+    delay(10);
+    
+    buttonPressed = false;
+  }
 
-    if(meterValue > meterValueLastSaved + 1){
-      savePulseCount();
-    }
+  if(meterValue > meterValueLastSaved + 1){
+    savePulseCount();
+  }
+
+  if(wifiConnectFailedTime != 0 && millis() > (wifiConnectFailedTime + 180000)){
+    initWiFi();
+    wifiConnectFailedTime = 0;
+  }
 }
