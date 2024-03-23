@@ -10,6 +10,7 @@
 
 bool buttonPressed = false;
 unsigned long buttonPressedTime = 0;
+unsigned long pulseTime = 0;
 
 unsigned long wifiConnectFailedTime = 0;
 
@@ -38,7 +39,11 @@ void ICACHE_RAM_ATTR buttonPressedHandler(){
 }
 
 void ICACHE_RAM_ATTR counterPulseHandler(){
-  pulseCount++;
+  if(millis() > pulseTime + 8){
+    pulseCount++;
+  }
+
+  pulseTime = millis();
 }
 
 void setup() {
@@ -117,6 +122,7 @@ void setup() {
 
   server.on("/",handleIndex);
   server.on("/config",handleConfig);
+  server.on("/ota", handleOta);
   server.begin(80);
   
   displayMeterValue();
@@ -153,6 +159,23 @@ boolean initWiFi() {
     return connected;
 }
 
+void ota(){
+  display.showString("OTA");
+    
+  ArduinoOTA.onEnd([]() {
+    display.showString("OTA done");
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    if (error == OTA_AUTH_ERROR) display.showString("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) display.showString("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) display.showString("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) display.showString("Receive Failed");
+    else if (error == OTA_END_ERROR) display.showString("End Failed");
+  });
+  ArduinoOTA.begin();
+  return;
+}
+
 void handleConfig() {
   conf.handleFormRequest(&server);
   if (server.hasArg("SAVE")) {
@@ -170,6 +193,11 @@ void handleConfig() {
 
     display.setBrightness(conf.getInt("brightness"));
   }
+}
+
+void handleOta() {
+  ota();
+  otaUpdate = true;
 }
 
 void handleIndex(){
@@ -231,6 +259,8 @@ void resetCounter(){
   pulseCount = 0; 
   setMeterValue();
   displayMeterValue();
+
+  savePulseCount();
   
   meterValueLastSaved = meterValue;
 }
@@ -248,8 +278,16 @@ void savePulseCount(){
 }
 
 void loop() {
-  if(otaUpdate){
+  if(otaUpdate){    
     ArduinoOTA.handle();
+
+    if(digitalRead(BUTTON) == LOW){
+      delay(1000);
+      if(digitalRead(BUTTON) == LOW){
+        ESP.restart();
+      }      
+    }
+    
     return;
   }
   
@@ -262,15 +300,13 @@ void loop() {
 
   if(buttonPressed){
     while(digitalRead(BUTTON) == LOW){
+      delay(100);
       if(buttonPressedTime + 3000 < millis()){
         buttonPressed = false;
         resetCounter();
         break;
       }
     }
-    float test = conf.getFloat("pulseCount");
-    display.showString((String((long) test) + " pulses").c_str());
-    delay(10);
     
     buttonPressed = false;
   }
@@ -282,5 +318,10 @@ void loop() {
   if(wifiConnectFailedTime != 0 && millis() > (wifiConnectFailedTime + 180000)){
     initWiFi();
     wifiConnectFailedTime = 0;
+  }
+
+  if(otaUpdate){
+    display.showString("OTA");
+    delay(100);
   }
 }
