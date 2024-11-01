@@ -39,7 +39,9 @@ void ICACHE_RAM_ATTR buttonPressedHandler(){
 }
 
 void ICACHE_RAM_ATTR counterPulseHandler(){
-  if(millis() > pulseTime + 8){
+  uint16_t pulseInterval = millis() - pulseTime;
+
+  if((pulseInterval > 8 && pulseInterval < 48) || pulseInterval > 52){
     pulseCount++;
   }
 
@@ -208,7 +210,7 @@ void handleIndex(){
     tankPercent = 0;
   }
   
-  char _buf[1300];
+  char _buf[1400];
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   sprintf(_buf,HTML_INDEX,/*_apName.c_str()*/apName.c_str(), apName.c_str(), meterValue, tankPercent, tankPercent, pulseCount);
   server.send(200, "text/html", _buf);
