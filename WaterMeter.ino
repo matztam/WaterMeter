@@ -128,11 +128,10 @@ void setup() {
   
   displayMeterValue();
 
+  pinMode(COUNTER, INPUT);
   
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressedHandler, FALLING);
   attachInterrupt(digitalPinToInterrupt(COUNTER), counterPulseHandler, FALLING);
-
-  pinMode(COUNTER, INPUT_PULLUP);
 }
 
 boolean initWiFi() {
@@ -203,19 +202,28 @@ void handleOta() {
   otaUpdate = true;
 }
 
-void handleIndex(){
-  String apName = conf.getApName();
+void handleIndex() {
+  String apName    = conf.getApName();
   float tankVolume = conf.getFloat("tankVolume");
-  float tankPercent = (tankVolume - meterValue) / tankVolume * 100;
-  if(meterValue >= tankVolume){
-    tankPercent = 0;
-  }
-  
-  char _buf[1400];
-  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-  sprintf(_buf,HTML_INDEX,/*_apName.c_str()*/apName.c_str(), apName.c_str(), meterValue, tankPercent, tankPercent, pulseCount);
-  server.send(200, "text/html", _buf);
+  float tankPercent= (tankVolume - meterValue) / tankVolume * 100;
+  if (meterValue >= tankVolume) tankPercent = 0;
+
+  char buf[1400];
+  int len = snprintf(
+    buf, sizeof(buf),
+    HTML_INDEX,
+    apName.c_str(),
+    apName.c_str(),
+    meterValue,
+    tankPercent,
+    tankPercent,
+    pulseCount
+  );
+
+  server.sendHeader("Connection", "close");
+  server.send(200, "text/html", buf);
 }
+
 
 void setWifiPw(String wifiPw){
   File file = SPIFFS.open(WIFIPWFILE, "w");
@@ -327,4 +335,6 @@ void loop() {
     display.showString("OTA");
     delay(100);
   }
+
+  yield();
 }
