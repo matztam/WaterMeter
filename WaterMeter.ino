@@ -53,7 +53,6 @@ void setup() {
   display.showString("HELLO");
   
   pinMode(BUTTON, INPUT_PULLUP);
-  pinMode(COUNTER, INPUT_PULLUP);
   
   conf.setDescription(params);
   conf.readConfig();
@@ -132,6 +131,8 @@ void setup() {
   
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressedHandler, FALLING);
   attachInterrupt(digitalPinToInterrupt(COUNTER), counterPulseHandler, FALLING);
+
+  pinMode(COUNTER, INPUT_PULLUP);
 }
 
 boolean initWiFi() {
