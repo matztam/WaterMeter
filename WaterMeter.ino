@@ -7,12 +7,19 @@
 #include <WebConfig.h>
 #include "WaterMeter.h"
 
+const unsigned long WIFI_RETRY_INTERVAL = 180000;
 
 bool buttonPressed = false;
 unsigned long buttonPressedTime = 0;
-unsigned long pulseTime = 0;
+// ISR-shared: pulse counter and last pulse timestamp (us)
+volatile unsigned long pulseCount = 0;
+volatile uint32_t lastPulseUs = 0;
+
+// Minimum allowed interval between pulses in microseconds
+const uint32_t MIN_PULSE_US = 6000;
 
 unsigned long wifiConnectFailedTime = 0;
+
 
 TM1637TinyDisplay display(CLK, DIO);
 int bright = 1;
@@ -21,88 +28,85 @@ ESP8266WebServer server;
 WebConfig conf;
 
 
-
 float meterValue = 0.0f;
 float meterValueLastSaved = 0.0f;
-unsigned long pulseCount = 0;
 float divider = 1;
 
 bool otaUpdate = false;
 
-void ICACHE_RAM_ATTR buttonPressedHandler(){
-  if(buttonPressedTime + 200 > millis()){
+void ICACHE_RAM_ATTR buttonPressedHandler() {
+  if (buttonPressedTime + 200 > millis()) {
     return;
   }
-  
+
   buttonPressedTime = millis();
-  buttonPressed = true;;
+  buttonPressed = true;
+  ;
 }
 
-void ICACHE_RAM_ATTR counterPulseHandler(){
-  uint16_t pulseInterval = millis() - pulseTime;
-
-  if((pulseInterval > 8 && pulseInterval < 48) || pulseInterval > 52){
+void ICACHE_RAM_ATTR counterPulseHandler() {
+  uint32_t now = micros();
+  if ((uint32_t)(now - lastPulseUs) >= MIN_PULSE_US) {
     pulseCount++;
+    lastPulseUs = now;
   }
-
-  pulseTime = millis();
 }
 
 void setup() {
   display.begin();
   display.showString("HELLO");
-  
+
   pinMode(BUTTON, INPUT_PULLUP);
-  
+
   conf.setDescription(params);
   conf.readConfig();
 
 
-  if(conf.getString("wifiPw") != ""){
-      setWifiPw(conf.getString("wifiPw"));
-      conf.setValue("wifiPw", "");
-      conf.writeConfig();
+  if (conf.getString("wifiPw") != "") {
+    setWifiPw(conf.getString("wifiPw"));
+    conf.setValue("wifiPw", "");
+    conf.writeConfig();
   }
 
-  if(digitalRead(BUTTON) == LOW){
+  if (digitalRead(BUTTON) == LOW) {
     buttonPressedTime = millis();
   }
-  while(digitalRead(BUTTON) == LOW){
-    if(buttonPressedTime + 1000 < millis()){
+  while (digitalRead(BUTTON) == LOW) {
+    if (buttonPressedTime + 1000 < millis()) {
       display.showString("OTA");
       otaUpdate = true;
       break;
     }
     delay(10);
   }
-  while(digitalRead(BUTTON) == LOW){
-    if(buttonPressedTime + 5000 < millis()){
+  while (digitalRead(BUTTON) == LOW) {
+    if (buttonPressedTime + 5000 < millis()) {
       factoryReset();
       break;
     }
     delay(10);
   }
-  
-  
+
+
   display.setBrightness(conf.getInt("brightness"));
-  
+
   pulseCount = conf.getFloat("pulseCount");
   divider = conf.getFloat("divider");
 
   setMeterValue();
 
-  if(!otaUpdate){
+  if (!otaUpdate) {
     displayMeterValue();
   }
 
   meterValueLastSaved = meterValue;
 
-  
+
   initWiFi();
 
-  if(otaUpdate){
+  if (otaUpdate) {
     display.showString("OTA");
-    
+
     ArduinoOTA.onEnd([]() {
       display.showString("OTA done");
     });
@@ -118,52 +122,56 @@ void setup() {
   }
 
   char dns[30];
-  sprintf(dns,"%s.local",conf.getApName());
+  sprintf(dns, "%s.local", conf.getApName());
   MDNS.begin(dns);
 
-  server.on("/",handleIndex);
-  server.on("/config",handleConfig);
+  server.on("/", handleIndex);
+  server.on("/config", handleConfig);
   server.on("/ota", handleOta);
   server.begin(80);
-  
+
   displayMeterValue();
 
-  pinMode(COUNTER, INPUT);
-  
+  pinMode(COUNTER, INPUT_PULLUP);
+
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressedHandler, FALLING);
   attachInterrupt(digitalPinToInterrupt(COUNTER), counterPulseHandler, FALLING);
 }
 
 boolean initWiFi() {
-  
-    boolean connected = false;
-    WiFi.mode(WIFI_STA);
-    if (conf.values[0] != "") {
-      WiFi.begin(conf.values[0].c_str(),getWifiPw().c_str());
-      uint8_t cnt = 0;
-      while ((WiFi.status() != WL_CONNECTED) && (cnt<20)){
-        delay(500);
-        cnt++;
-      }
-      if (WiFi.status() == WL_CONNECTED) {
-        String ip = "Connected IP " + WiFi.localIP().toString();
-        display.showString(ip.c_str());
-        connected = true;
-      }
+
+  boolean connected = false;
+  WiFi.mode(WIFI_STA);
+  if (conf.values[0] != "") {
+    WiFi.begin(conf.values[0].c_str(), getWifiPw().c_str());
+    uint8_t cnt = 0;
+    while ((WiFi.status() != WL_CONNECTED) && (cnt < 20)) {
+      delay(500);
+      cnt++;
     }
-    if (!connected) {
-          WiFi.mode(WIFI_AP);
-          WiFi.softAP(conf.getApName(),"",1);  
-          display.showString("AP mode IP 192.168. 4.1");
-          wifiConnectFailedTime = millis();
+    if (WiFi.status() == WL_CONNECTED) {
+      String ip = "Connected IP " + WiFi.localIP().toString();
+      display.showString(ip.c_str());
+
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+
+      connected = true;
     }
-    
-    return connected;
+  }
+  if (!connected) {
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(conf.getApName(), "", 1);
+    display.showString("AP mode IP 192.168. 4.1");
+    wifiConnectFailedTime = millis();
+  }
+
+  return connected;
 }
 
-void ota(){
+void ota() {
   display.showString("OTA");
-    
+
   ArduinoOTA.onEnd([]() {
     display.showString("OTA done");
   });
@@ -181,7 +189,7 @@ void ota(){
 void handleConfig() {
   conf.handleFormRequest(&server);
   if (server.hasArg("SAVE")) {
-    if(conf.getString("wifiPw") != ""){
+    if (conf.getString("wifiPw") != "") {
       setWifiPw(conf.getString("wifiPw"));
       conf.setValue("wifiPw", "");
       conf.writeConfig();
@@ -189,7 +197,7 @@ void handleConfig() {
 
     pulseCount = conf.getFloat("pulseCount");
     divider = conf.getFloat("divider");
-    
+
     setMeterValue();
     displayMeterValue();
 
@@ -203,9 +211,9 @@ void handleOta() {
 }
 
 void handleIndex() {
-  String apName    = conf.getApName();
+  String apName = conf.getApName();
   float tankVolume = conf.getFloat("tankVolume");
-  float tankPercent= (tankVolume - meterValue) / tankVolume * 100;
+  float tankPercent = (tankVolume - meterValue) / tankVolume * 100;
   if (meterValue >= tankVolume) tankPercent = 0;
 
   char buf[1400];
@@ -217,121 +225,141 @@ void handleIndex() {
     meterValue,
     tankPercent,
     tankPercent,
-    pulseCount
-  );
+    pulseCount);
 
   server.sendHeader("Connection", "close");
   server.send(200, "text/html", buf);
 }
 
 
-void setWifiPw(String wifiPw){
+void setWifiPw(String wifiPw) {
   File file = SPIFFS.open(WIFIPWFILE, "w");
   file.print(wifiPw);
   file.close();
 }
 
-String getWifiPw(){
+String getWifiPw() {
   String wifiPw = "";
-  
+
   File file = SPIFFS.open(WIFIPWFILE, "r");
 
-  if(!file){
+  if (!file) {
     return "";
   }
-  
+
   while (file.available()) {
-    wifiPw += (char) file.read();
+    wifiPw += (char)file.read();
   }
-      
+
   file.close();
 
   return wifiPw;
 }
 
-void setMeterValue(){
+void setMeterValue() {
   meterValue = pulseCount / divider;
 }
 
-void displayMeterValue(){
-  if(meterValue < 1){
-    display.showNumberDec(meterValue*10, 0b10000000, true, 2, 2); 
-  }else{
-    display.showNumberDec(meterValue*10, 0b00100000, false); 
+void displayMeterValue() {
+  if (meterValue < 1) {
+    display.showNumberDec(meterValue * 10, 0b10000000, true, 2, 2);
+  } else {
+    display.showNumberDec(meterValue * 10, 0b00100000, false);
   }
 }
 
-void resetCounter(){
+void resetCounter() {
   display.showString("reset");
   display.clear();
   conf.setValue("pulseCount", String(0.0f));
   conf.writeConfig();
-  
-  pulseCount = 0; 
+
+  pulseCount = 0;
   setMeterValue();
   displayMeterValue();
 
   savePulseCount();
-  
+
   meterValueLastSaved = meterValue;
 }
 
-void factoryReset(){
+void factoryReset() {
   display.showString("factory reset");
   SPIFFS.format();
   ESP.restart();
 }
 
-void savePulseCount(){
+void savePulseCount() {
   conf.setValue("pulseCount", String(pulseCount));
   conf.writeConfig();
   meterValueLastSaved = meterValue;
 }
 
 void loop() {
-  if(otaUpdate){    
+  if (otaUpdate) {
     ArduinoOTA.handle();
 
-    if(digitalRead(BUTTON) == LOW){
+    if (digitalRead(BUTTON) == LOW) {
       delay(1000);
-      if(digitalRead(BUTTON) == LOW){
+      if (digitalRead(BUTTON) == LOW) {
         ESP.restart();
-      }      
+      }
     }
-    
+
     return;
   }
-  
+
   MDNS.update();
-  
+
   server.handleClient();
 
   setMeterValue();
   displayMeterValue();
 
-  if(buttonPressed){
-    while(digitalRead(BUTTON) == LOW){
+  if (buttonPressed) {
+    while (digitalRead(BUTTON) == LOW) {
       delay(100);
-      if(buttonPressedTime + 3000 < millis()){
+      if (buttonPressedTime + 3000 < millis()) {
         buttonPressed = false;
         resetCounter();
         break;
       }
     }
-    
+
     buttonPressed = false;
   }
 
-  if(meterValue > meterValueLastSaved + 1){
+  if (meterValue > meterValueLastSaved + 1) {
     savePulseCount();
   }
 
-  if(wifiConnectFailedTime != 0 && millis() > (wifiConnectFailedTime + 180000)){
-    initWiFi();
-    wifiConnectFailedTime = 0;
+  // 1) Erkennen, wenn die Verbindung unterwegs verloren geht
+  if (WiFi.status() != WL_CONNECTED && wifiConnectFailedTime == 0) {
+    // WLAN ist weg – starte Retry-Timer
+    wifiConnectFailedTime = millis();
   }
 
-  if(otaUpdate){
+  // 2) Alle WIFI_RETRY_INTERVAL ms erneut verbinden, wenn wir nicht verbunden sind
+  if (wifiConnectFailedTime != 0 && millis() - wifiConnectFailedTime >= WIFI_RETRY_INTERVAL) {
+    display.showString("RetryWiFi");
+    bool connected = initWiFi();  // versucht erneut
+    if (connected) {
+      // Verbindung steht wieder: Timer aus
+      wifiConnectFailedTime = 0;
+
+      if ((WiFi.getMode() & WIFI_AP) != 0) {
+        // Soft-AP ist aktiv, also schalte ihn ab
+        WiFi.softAPdisconnect(true);
+        // und wechsle in reinen STA-Modus
+        WiFi.mode(WIFI_STA);
+      }
+    } else {
+      // immer noch weg: Timer neu starten für den nächsten Versuch
+      wifiConnectFailedTime = millis();
+    }
+  }
+
+  if (otaUpdate) {
     display.showString("OTA");
     delay(100);
   }
