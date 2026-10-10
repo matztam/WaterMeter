@@ -216,7 +216,7 @@ void handleIndex() {
   float tankPercent = (tankVolume - meterValue) / tankVolume * 100;
   if (meterValue >= tankVolume) tankPercent = 0;
 
-  char buf[1400];
+  char buf[1600];
   int len = snprintf(
     buf, sizeof(buf),
     HTML_INDEX,
