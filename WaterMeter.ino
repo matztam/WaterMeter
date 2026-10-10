@@ -339,6 +339,11 @@ void loop() {
     wifiConnectFailedTime = millis();
   }
 
+  // Ohne konfigurierte SSID dauerhaft im AP-Modus bleiben, keine Retries
+  if (conf.getString("ssid") == "") {
+    wifiConnectFailedTime = 0;
+  }
+
   // 2) Alle WIFI_RETRY_INTERVAL ms erneut verbinden, wenn wir nicht verbunden sind
   if (wifiConnectFailedTime != 0 && millis() - wifiConnectFailedTime >= WIFI_RETRY_INTERVAL) {
     display.showString("RetryWiFi");
