@@ -33,6 +33,7 @@ float meterValueLastSaved = 0.0f;
 float divider = 1;
 
 bool otaUpdate = false;
+uint16_t otaPin = 0;
 
 void ICACHE_RAM_ATTR buttonPressedHandler() {
   if (buttonPressedTime + 200 > millis()) {
@@ -105,19 +106,7 @@ void setup() {
   initWiFi();
 
   if (otaUpdate) {
-    display.showString("OTA");
-
-    ArduinoOTA.onEnd([]() {
-      display.showString("OTA done");
-    });
-    ArduinoOTA.onError([](ota_error_t error) {
-      if (error == OTA_AUTH_ERROR) display.showString("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR) display.showString("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR) display.showString("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR) display.showString("Receive Failed");
-      else if (error == OTA_END_ERROR) display.showString("End Failed");
-    });
-    ArduinoOTA.begin();
+    ota();
     return;
   }
 
@@ -169,8 +158,19 @@ boolean initWiFi() {
   return connected;
 }
 
+void showOtaPin() {
+  display.showNumberDec(otaPin, 0, true, 4, 0);
+}
+
 void ota() {
-  display.showString("OTA");
+  // Zufaellige vierstellige PIN als OTA-Passwort, nur auf dem Display sichtbar
+  otaPin = ESP.random() % 10000;
+  char pin[5];
+  snprintf(pin, sizeof(pin), "%04u", (unsigned int)otaPin);
+  ArduinoOTA.setPassword(pin);
+
+  display.showString("OTA PIN");
+  showOtaPin();
 
   ArduinoOTA.onEnd([]() {
     display.showString("OTA done");
@@ -181,6 +181,7 @@ void ota() {
     else if (error == OTA_CONNECT_ERROR) display.showString("Connect Failed");
     else if (error == OTA_RECEIVE_ERROR) display.showString("Receive Failed");
     else if (error == OTA_END_ERROR) display.showString("End Failed");
+    showOtaPin();
   });
   ArduinoOTA.begin();
   return;
@@ -206,6 +207,8 @@ void handleConfig() {
 }
 
 void handleOta() {
+  server.sendHeader("Connection", "close");
+  server.send(200, "text/plain", "OTA-Modus aktiv. Die PIN wird auf dem Display angezeigt.");
   ota();
   otaUpdate = true;
 }
@@ -313,6 +316,11 @@ void loop() {
 
   server.handleClient();
 
+  // OTA wurde ueber das Webinterface gestartet: PIN nicht ueberschreiben
+  if (otaUpdate) {
+    return;
+  }
+
   setMeterValue();
   displayMeterValue();
 
@@ -371,11 +379,6 @@ void loop() {
       // immer noch weg: Timer neu starten für den nächsten Versuch
       wifiConnectFailedTime = millis();
     }
-  }
-
-  if (otaUpdate) {
-    display.showString("OTA");
-    delay(100);
   }
 
   yield();
