@@ -317,15 +317,24 @@ void loop() {
   displayMeterValue();
 
   if (buttonPressed) {
+    bool counterReset = false;
     while (digitalRead(BUTTON) == LOW) {
       delay(100);
       if (buttonPressedTime + 3000 < millis()) {
         buttonPressed = false;
         resetCounter();
+        counterReset = true;
         break;
       }
     }
 
+    if (!counterReset) {
+      // Kurzer Druck: Hinweis als Laufschrift anzeigen
+      display.showString("Press and hold to reset");
+      displayMeterValue();
+    }
+
+    // Prellen beim Loslassen waehrend der Laufschrift ignorieren
     buttonPressed = false;
   }
 
